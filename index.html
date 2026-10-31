@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>日本株つみたて試算</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one column on phones; controls left / results right from 860px. Indigo (藍) ink on blue-grey paper, vermilion only for 元本割れ. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --ink: #18202e;
+  --muted: #5b6577;
+  --line: #d9dee7;
+  --ai: #24438f;        /* 藍 accent */
+  --ai-soft: #24438f22;
+  --ai-mid: #24438f55;
+  --shu: #c23b22;       /* loss */
+  --gain: #1d7a55;
+  --f-display: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --f-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1420; --surface: #171e2d; --ink: #e6eaf2; --muted: #9aa4b8; --line: #2a3346;
+    --ai: #8eaaf0; --ai-soft: #8eaaf026; --ai-mid: #8eaaf05c; --shu: #ff7a62; --gain: #5fd19f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1420; --surface: #171e2d; --ink: #e6eaf2; --muted: #9aa4b8; --line: #2a3346;
+  --ai: #8eaaf0; --ai-soft: #8eaaf026; --ai-mid: #8eaaf05c; --shu: #ff7a62; --gain: #5fd19f;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 20px; }
+header h1 { font-family: var(--f-display); font-size: clamp(1.6rem, 5vw, 2.2rem); line-height: 1.25; margin: 0; text-wrap: balance; }
+header p { margin: 6px 0 0; color: var(--muted); max-width: 62ch; }
+.layout { display: grid; gap: 20px; }
+@media (min-width: 860px) { .layout { grid-template-columns: 320px minmax(0, 1fr); align-items: start; } .controls { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.controls { display: grid; gap: 14px; }
+.field { display: grid; gap: 4px; }
+.field-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.field label { font-weight: 500; font-size: 14px; }
+.field output { font-family: var(--f-num); font-size: 15px; color: var(--ai); font-variant-numeric: tabular-nums; }
+.field small { color: var(--muted); font-size: 12px; }
+input[type=range] { width: 100%; height: 32px; accent-color: var(--ai); margin: 0; }
+.toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.toggle input { width: 22px; height: 22px; accent-color: var(--ai); }
+.btn { font: inherit; font-weight: 700; font-size: 16px; border: 0; border-radius: 8px; padding: 12px; background: var(--ai); color: var(--surface); cursor: pointer; min-height: 48px; }
+.btn:focus-visible, input:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
+.results { display: grid; gap: 20px; min-width: 0; }
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (min-width: 560px) { .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+.tile .k { font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+.tile .v { font-family: var(--f-num); font-size: clamp(1.05rem, 4.2vw, 1.35rem); font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .s { font-size: 12px; color: var(--muted); }
+.tile.main { border-color: var(--ai); }
+.tile.main .v { color: var(--ai); }
+.v.loss { color: var(--shu); }
+h2 { font-family: var(--f-display); font-size: 1.2rem; margin: 0 0 4px; }
+.sub { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+.chart { width: 100%; display: block; }
+.chart text { fill: var(--muted); font-family: var(--f-num); font-size: 11px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.legend span::before { content: ""; display: inline-block; width: 14px; height: 8px; margin-right: 5px; vertical-align: middle; border-radius: 2px; background: var(--c); }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 8px 4px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-weight: 500; color: var(--muted); font-size: 12px; }
+@media (max-width: 480px) { table { font-size: 12.5px; } }
+td.n { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.bars { display: grid; gap: 8px; }
+.bar { display: grid; grid-template-columns: 3.5em minmax(0, 1fr) 3.8em; gap: 8px; align-items: center; font-size: 13px; }
+.bar .track { height: 14px; background: var(--ai-soft); border-radius: 3px; overflow: hidden; }
+.bar .fill { height: 100%; background: var(--shu); border-radius: 3px; transition: width .4s ease; }
+.bar .pct { font-family: var(--f-num); text-align: right; font-variant-numeric: tabular-nums; }
+.note { font-size: 12px; color: var(--muted); line-height: 1.7; }
+.note p { margin: 0 0 4px; }
+.busy { opacity: .55; transition: opacity .15s; }
+@media (prefers-reduced-motion: reduce) { .bar .fill, .busy { transition: none; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>日本株つみたて試算</h1>
+    <p>毎月の積立を、乱数で作った数千通りの「架空の未来」で試します。条件を動かすと結果がすぐ変わります。</p>
+  </header>
+
+  <div class="layout">
+    <form class="panel controls" id="form" autocomplete="off">
+      <div class="field">
+        <div class="field-top"><label for="monthly">毎月の積立額</label><output id="o-monthly"></output></div>
+        <input type="range" id="monthly" min="5000" max="200000" step="5000" value="30000">
+      </div>
+      <div class="field">
+        <div class="field-top"><label for="years">積立期間</label><output id="o-years"></output></div>
+        <input type="range" id="years" min="1" max="40" step="1" value="20">
+      </div>
+      <div class="field">
+        <div class="field-top"><label for="ret">期待値上がり率（年）</label><output id="o-ret"></output></div>
+        <input type="range" id="ret" min="0" max="0.10" step="0.005" value="0.05">
+        <small>配当を除いた株価の伸び。長期の日本株は数%程度が目安</small>
+      </div>
+      <div class="field">
+        <div class="field-top"><label for="div">配当利回り（年）</label><output id="o-div"></output></div>
+        <input type="range" id="div" min="0" max="0.05" step="0.0025" value="0.02">
+      </div>
+      <div class="field">
+        <div class="field-top"><label for="vol">値動きの大きさ（年）</label><output id="o-vol"></output></div>
+        <input type="range" id="vol" min="0.05" max="0.40" step="0.01" value="0.18">
+        <small>TOPIX はおおむね 15〜20% 前後</small>
+      </div>
+      <label class="toggle" for="nisa"><span>NISA を使う（税金 0円）</span><input type="checkbox" id="nisa" checked></label>
+      <button type="button" class="btn" id="reroll">別の未来で試す</button>
+    </form>
+
+    <div class="results" id="results">
+      <div class="tiles">
+        <div class="tile"><div class="k">元本</div><div class="v" id="t-principal">–</div><div class="s" id="t-principal-s"></div></div>
+        <div class="tile main"><div class="k">中央値</div><div class="v" id="t-median">–</div><div class="s" id="t-median-s"></div></div>
+        <div class="tile"><div class="k">悪いケース（下位5%）</div><div class="v" id="t-p5">–</div><div class="s" id="t-p5-s"></div></div>
+        <div class="tile"><div class="k">元本割れの確率</div><div class="v loss" id="t-loss">–</div><div class="s" id="t-trials"></div></div>
+      </div>
+
+      <section class="panel">
+        <h2>資産の増え方の幅</h2>
+        <p class="sub">濃い帯は半分の未来が入る範囲、薄い帯は 90% が入る範囲</p>
+        <svg class="chart" id="fan" role="img" aria-label="資産額の分布の推移"></svg>
+        <div class="legend">
+          <span style="--c: var(--ai)">中央値</span>
+          <span style="--c: var(--ai-mid)">25〜75%</span>
+          <span style="--c: var(--ai-soft)">5〜95%</span>
+          <span style="--c: var(--muted)">元本</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>戦略のくらべ</h2>
+        <p class="sub">同じ総額を同じ未来で運用した結果（中央値）</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>戦略</th><th>中央値</th><th>下位5%</th><th>元本割れ</th></tr></thead>
+            <tbody id="strat"></tbody>
+          </table>
+        </div>
+        <div class="note" style="margin-top:10px">
+          <p>一括投資: 総額を初月にまとめて買う。積立: 毎月同じ額を買う。トレンドフォロー: 株価が12か月平均より上なら全額保有、下なら全額現金。</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>続けた年数と元本割れ</h2>
+        <p class="sub">いまの条件で、期間だけを変えた積立の元本割れ確率</p>
+        <div class="bars" id="bars"></div>
+      </section>
+
+      <div class="note">
+        <p>株価は幾何ブラウン運動による架空データで、実際の日経平均・TOPIX ではありません。将来の成績を約束するものではなく、投資判断の助言でもありません。</p>
+        <p>課税口座では利益と配当に 20.315% を課税。売買コストは片道 0.1% として計算しています。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const TAX = 0.20315, FEE = 0.001, TRIALS = 2000;
+  const $ = id => document.getElementById(id);
+  let seed = 42;
+
+  function rng(s) {
+    let a = s >>> 0, spare = null;
+    const u = () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    return () => {
+      if (spare !== null) { const v = spare; spare = null; return v; }
+      let x, y, r; do { x = u() * 2 - 1; y = u() * 2 - 1; r = x * x + y * y; } while (r === 0 || r >= 1);
+      const m = Math.sqrt(-2 * Math.log(r) / r); spare = y * m; return x * m;
+    };
+  }
+
+  function path(months, p, g) {
+    const mu = p.ret / 12, sig = p.vol / Math.sqrt(12), drift = mu - 0.5 * sig * sig;
+    const out = new Float64Array(months + 1); out[0] = 100;
+    for (let i = 1; i <= months; i++) out[i] = out[i - 1] * Math.exp(drift + sig * g());
+    return out;
+  }
+
+  const divRate = p => p.div / 12 * (p.nisa ? 1 : 1 - TAX);
+  const afterTax = (v, inv, nisa) => (nisa || v <= inv) ? v : v - (v - inv) * TAX;
+
+  // 積立: 各月末の評価額も返す
+  function dca(prices, p, track) {
+    let sh = 0; const d = divRate(p), n = prices.length - 1;
+    for (let i = 0; i < n; i++) {
+      sh += sh * d;
+      sh += p.monthly * (1 - FEE) / prices[i];
+      if (track) track[i + 1] = sh * prices[i + 1];
+    }
+    return sh * prices[n];
+  }
+  function lump(prices, total, p) {
+    let sh = total * (1 - FEE) / prices[0]; const d = divRate(p);
+    for (let i = 1; i < prices.length; i++) sh += sh * d;
+    return sh * prices[prices.length - 1];
+  }
+  function trend(prices, total, p, w = 12) {
+    let cash = total, sh = 0; const d = divRate(p);
+    for (let i = 1; i < prices.length; i++) {
+      const px = prices[i - 1]; sh += sh * d;
+      if (i >= w) {
+        let s = 0; for (let j = i - w; j < i; j++) s += prices[j];
+        const ma = s / w;
+        if (px > ma && cash > 0) { sh += cash * (1 - FEE) / px; cash = 0; }
+        else if (px < ma && sh > 0) { cash += sh * px * (1 - FEE); sh = 0; }
+      }
+    }
+    return cash + sh * prices[prices.length - 1];
+  }
+
+  const q = (sorted, r) => sorted[Math.floor(r * (sorted.length - 1))];
+
+  function simulate(p) {
+    const months = p.years * 12, total = p.monthly * months, g = rng(seed);
+    const snaps = Array.from({ length: months + 1 }, () => new Float64Array(TRIALS));
+    const finals = { lump: [], dca: [], trend: [] };
+    const track = new Float64Array(months + 1);
+    for (let t = 0; t < TRIALS; t++) {
+      const pr = path(months, p, g);
+      const v = dca(pr, p, track);
+      for (let m = 1; m <= months; m++) snaps[m][t] = track[m];
+      finals.dca.push(afterTax(v, total, p.nisa));
+      finals.lump.push(afterTax(lump(pr, total, p), total, p.nisa));
+      finals.trend.push(afterTax(trend(pr, total, p), total, p.nisa));
+    }
+    const bands = [];
+    for (let m = 0; m <= months; m++) {
+      const s = Array.from(snaps[m]).sort((a, b) => a - b);
+      bands.push({ m, p5: q(s, .05), p25: q(s, .25), p50: q(s, .5), p75: q(s, .75), p95: q(s, .95), principal: p.monthly * m });
+    }
+    const stats = {};
+    for (const k in finals) {
+      const s = finals[k].sort((a, b) => a - b);
+      stats[k] = { p5: q(s, .05), p50: q(s, .5), p95: q(s, .95), loss: s.filter(x => x < total).length / s.length };
+    }
+    // 期間別の元本割れ
+    const g2 = rng(seed + 7), periods = [1, 3, 5, 10, 20, 30], N = 800;
+    const loss = periods.map(y => {
+      const mm = y * 12, inv = p.monthly * mm; let c = 0;
+      for (let t = 0; t < N; t++) if (dca(path(mm, p, g2), p) < inv) c++;
+      return { y, r: c / N };
+    });
+    return { total, bands, stats, loss, months };
+  }
+
+  const fmtYen = v => {
+    if (v >= 1e8) return (v / 1e8).toFixed(2) + "億円";
+    if (v >= 1e4) return Math.round(v / 1e4).toLocaleString("ja-JP") + "万円";
+    return Math.round(v).toLocaleString("ja-JP") + "円";
+  };
+  const pct = v => (v * 100).toFixed(1) + "%";
+  const mult = (v, t) => "元本の " + (v / t).toFixed(2) + " 倍";
+
+  function drawFan(r) {
+    const svg = $("fan"), W = Math.max(280, svg.clientWidth || 600), H = Math.round(Math.min(340, Math.max(220, W * 0.55)));
+    const L = 52, R = 10, T = 10, B = 26, iw = W - L - R, ih = H - T - B;
+    const ymaxRaw = r.bands[r.months].p95;
+    const step = niceStep(ymaxRaw / 4), ymax = Math.ceil(ymaxRaw / step) * step;
+    const x = m => L + (m / r.months) * iw, y = v => T + ih - (v / ymax) * ih;
+    const area = (lo, hi) => {
+      let d = "M" + r.bands.map(b => x(b.m).toFixed(1) + "," + y(b[hi]).toFixed(1)).join("L");
+      d += "L" + r.bands.slice().reverse().map(b => x(b.m).toFixed(1) + "," + y(b[lo]).toFixed(1)).join("L") + "Z";
+      return d;
+    };
+    const line = k => "M" + r.bands.map(b => x(b.m).toFixed(1) + "," + y(b[k]).toFixed(1)).join("L");
+    let g = "";
+    for (let v = 0; v <= ymax + 1; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${axisYen(v)}</text>`;
+    const yrs = r.months / 12, ys = yrs <= 5 ? 1 : yrs <= 15 ? 5 : 10;
+    for (let yv = 0; yv <= yrs; yv += ys) g += `<text x="${x(yv * 12)}" y="${H - 6}" text-anchor="${yv === 0 ? "start" : yv + ys > yrs ? "end" : "middle"}">${yv}年</text>`;
+    const last = r.bands[r.months];
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H);
+    svg.innerHTML = g +
+      `<path d="${area("p5", "p95")}" fill="var(--ai-soft)"/>` +
+      `<path d="${area("p25", "p75")}" fill="var(--ai-mid)"/>` +
+      `<path d="${line("principal")}" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 4"/>` +
+      `<path d="${line("p50")}" fill="none" stroke="var(--ai)" stroke-width="2.5"/>` +
+      `<circle cx="${x(r.months)}" cy="${y(last.p50)}" r="4" fill="var(--ai)"/>`;
+  }
+  function niceStep(raw) { const e = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e; }
+  function axisYen(v) { if (v === 0) return "0"; if (v >= 1e8) return (v / 1e8).toFixed(v % 1e8 ? 1 : 0) + "億"; return Math.round(v / 1e4).toLocaleString("ja-JP") + "万"; }
+
+  let last = null;
+  function render(r, p) {
+    last = r;
+    $("t-principal").textContent = fmtYen(r.total);
+    $("t-principal-s").textContent = `月${fmtYen(p.monthly)} × ${p.years * 12}回`;
+    $("t-median").textContent = fmtYen(r.stats.dca.p50);
+    $("t-median-s").textContent = mult(r.stats.dca.p50, r.total);
+    $("t-p5").textContent = fmtYen(r.stats.dca.p5);
+    $("t-p5-s").textContent = mult(r.stats.dca.p5, r.total);
+    $("t-p5").classList.toggle("loss", r.stats.dca.p5 < r.total);
+    $("t-loss").textContent = pct(r.stats.dca.loss);
+    $("t-trials").textContent = `${TRIALS.toLocaleString()}通りの未来から`;
+    const names = { dca: "積立", lump: "一括", trend: "トレンド" };
+    $("strat").innerHTML = ["dca", "lump", "trend"].map(k => {
+      const s = r.stats[k];
+      return `<tr><td>${names[k]}</td><td class="n">${fmtYen(s.p50)}</td><td class="n" style="color:${s.p5 < r.total ? "var(--shu)" : "inherit"}">${fmtYen(s.p5)}</td><td class="n">${pct(s.loss)}</td></tr>`;
+    }).join("");
+    $("bars").innerHTML = r.loss.map(l => `<div class="bar"><span>${l.y}年</span><div class="track"><div class="fill" style="width:${(l.r * 100).toFixed(1)}%"></div></div><span class="pct">${pct(l.r)}</span></div>`).join("");
+    drawFan(r);
+  }
+
+  const params = () => ({ monthly: +$("monthly").value, years: +$("years").value, ret: +$("ret").value, div: +$("div").value, vol: +$("vol").value, nisa: $("nisa").checked });
+  function labels(p) {
+    $("o-monthly").textContent = p.monthly.toLocaleString("ja-JP") + "円";
+    $("o-years").textContent = p.years + "年";
+    $("o-ret").textContent = (p.ret * 100).toFixed(1) + "%";
+    $("o-div").textContent = (p.div * 100).toFixed(2) + "%";
+    $("o-vol").textContent = Math.round(p.vol * 100) + "%";
+  }
+
+  let timer = null;
+  function run(delay = 120) {
+    const p = params(); labels(p);
+    clearTimeout(timer);
+    $("results").classList.add("busy");
+    timer = setTimeout(() => { render(simulate(p), p); $("results").classList.remove("busy"); }, delay);
+  }
+
+  $("form").addEventListener("input", () => run());
+  $("form").addEventListener("submit", e => e.preventDefault());
+  $("reroll").addEventListener("click", () => { seed = (Math.random() * 1e9) | 0; run(0); });
+  let rw; window.addEventListener("resize", () => { clearTimeout(rw); rw = setTimeout(() => last && drawFan(last), 100); });
+  run(0);
+})();
+</script>
+</body>
+</html>
